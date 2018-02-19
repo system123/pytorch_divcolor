@@ -4,7 +4,7 @@ import argparse
 import os
 import socket
 import sys
-import numpy as np 
+import numpy as np
 
 from colordata import colordata
 from vae import VAE
@@ -18,7 +18,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from tqdm import tqdm 
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser(description='PyTorch Diverse Colorization')
 
@@ -61,28 +61,32 @@ args = parser.parse_args()
 
 if(args.visdom):
   import visdom
-  
-def get_dirpaths(args): 
+
+def get_dirpaths(args):
   if(args.dataset_key == 'lfw'):
     out_dir = 'data/output/lfw/'
     listdir = 'data/imglist/lfw/'
     featslistdir = 'data/featslist/lfw/'
+  elif(args.dataset_key == 'sar'):
+    out_dir = 'datum/results/'
+    listdir = 'datum/imglist/'
+    featslistdir = 'datum/featslist/'
   else:
     raise NameError('[ERROR] Incorrect key: %s' % (args.dataset_key))
   return out_dir, listdir, featslistdir
 
-def vae_loss(mu, logvar, pred, gt, lossweights, batchsize): 
+def vae_loss(mu, logvar, pred, gt, lossweights, batchsize):
   kl_element = torch.add(torch.add(torch.add(mu.pow(2), logvar.exp()), -1), logvar.mul(-1))
   kl_loss = torch.sum(kl_element).mul(.5)
   gt = gt.view(-1, 64*64*2)
   pred = pred.view(-1, 64*64*2)
   recon_element = torch.sqrt(torch.sum(torch.mul(torch.add(gt, pred.mul(-1)).pow(2), lossweights), 1))
   recon_loss = torch.sum(recon_element).mul(1./(batchsize))
-  
+
   recon_element_l2 = torch.sqrt(torch.sum(torch.add(gt, pred.mul(-1)).pow(2), 1))
   recon_loss_l2 = torch.sum(recon_element_l2).mul(1./(batchsize))
 
-  return kl_loss, recon_loss, recon_loss_l2 
+  return kl_loss, recon_loss, recon_loss_l2
 
 def get_gmm_coeffs(gmm_params):
   gmm_mu = gmm_params[..., :args.hiddensize*args.nmix]
@@ -94,7 +98,7 @@ def get_gmm_coeffs(gmm_params):
 
 def mdn_loss(gmm_params, mu, stddev, batchsize):
   gmm_mu, gmm_pi = get_gmm_coeffs(gmm_params)
-  eps = Variable(torch.randn(stddev.size()).normal_()).cuda() 
+  eps = Variable(torch.randn(stddev.size()).normal_()).cuda()
   z = torch.add(mu, torch.mul(eps, stddev))
   z_flat = z.repeat(1, args.nmix)
   z_flat = z_flat.view(batchsize*args.nmix, args.hiddensize)
@@ -113,10 +117,10 @@ def test_vae(model):
   model.train(False)
 
   out_dir, listdir, featslistdir = get_dirpaths(args)
-  batchsize = args.batchsize 
-  hiddensize = args.hiddensize 
-  nmix = args.nmix 
- 
+  batchsize = args.batchsize
+  hiddensize = args.hiddensize
+  nmix = args.nmix
+
   data = colordata(\
     os.path.join(out_dir, 'images'), \
     listdir=listdir,\
@@ -127,7 +131,7 @@ def test_vae(model):
 
   data_loader = DataLoader(dataset=data, num_workers=args.nthreads,\
     batch_size=batchsize, shuffle=False, drop_last=True)
-    
+
   test_loss = 0.
   for batch_idx, (batch, batch_recon_const, batch_weights, batch_recon_const_outres, _) in \
     tqdm(enumerate(data_loader), total=nbatches):
@@ -137,13 +141,13 @@ def test_vae(model):
     lossweights = lossweights.view(batchsize, -1)
     input_greylevel = Variable(batch_recon_const).cuda()
     z = Variable(torch.randn(batchsize, hiddensize))
- 
+
     mu, logvar, color_out = model(input_color, input_greylevel, z)
     _, _, recon_loss_l2 = \
       vae_loss(mu, logvar, color_out, input_color, lossweights, batchsize)
     test_loss = test_loss + recon_loss_l2.data[0]
-    
-  test_loss = (test_loss*1.)/nbatches 
+
+  test_loss = (test_loss*1.)/nbatches
 
   model.train(True)
 
@@ -152,11 +156,11 @@ def test_vae(model):
 def train_vae(logger=None):
 
   out_dir, listdir, featslistdir = get_dirpaths(args)
-  batchsize = args.batchsize 
-  hiddensize = args.hiddensize 
-  nmix = args.nmix 
+  batchsize = args.batchsize
+  hiddensize = args.hiddensize
+  nmix = args.nmix
   nepochs = args.epochs
- 
+
   data = colordata(\
     os.path.join(out_dir, 'images'), \
     listdir=listdir,\
@@ -186,7 +190,7 @@ def train_vae(logger=None):
       lossweights = lossweights.view(batchsize, -1)
       input_greylevel = Variable(batch_recon_const).cuda()
       z = Variable(torch.randn(batchsize, hiddensize))
- 
+
       optimizer.zero_grad()
       mu, logvar, color_out = model(input_color, input_greylevel, z)
       kl_loss, recon_loss, recon_loss_l2 = \
@@ -198,7 +202,7 @@ def train_vae(logger=None):
 
       train_loss = train_loss + recon_loss_l2.data[0]
 
-      if(logger): 
+      if(logger):
         logger.update_plot(itr_idx, \
           [kl_loss.data[0], recon_loss.data[0], recon_loss_l2.data[0]], \
           plot_type='vae')
@@ -210,30 +214,30 @@ def train_vae(logger=None):
           'train_%05d_%05d' % (epochs, batch_idx), \
           batchsize, \
           net_recon_const=batch_recon_const_outres.numpy())
- 
-    train_loss = (train_loss*1.)/(nbatches)
-    print('[DEBUG] VAE Train Loss, epoch %d has loss %f' % (epochs, train_loss)) 
 
-    test_loss = test_vae(model) 
+    train_loss = (train_loss*1.)/(nbatches)
+    print('[DEBUG] VAE Train Loss, epoch %d has loss %f' % (epochs, train_loss))
+
+    test_loss = test_vae(model)
     if(logger):
       logger.update_test_plot(epochs, test_loss)
-    print('[DEBUG] VAE Test Loss, epoch %d has loss %f' % (epochs, test_loss)) 
-
-    torch.save(model.state_dict(), '%s/models/model_vae.pth' % (out_dir))
+    print('[DEBUG] VAE Test Loss, epoch %d has loss %f' % (epochs, test_loss))
+    torch.save(model.state_dict(), os.path.join(out_dir, "models/model_vae.pth"))
+#    torch.save(model.state_dict(), '%s/models/model_vae.pth' % (out_dir))
 
 def train_mdn(logger=None):
   out_dir, listdir, featslistdir = get_dirpaths(args)
-  batchsize = args.batchsize 
-  hiddensize = args.hiddensize 
+  batchsize = args.batchsize
+  hiddensize = args.hiddensize
   nmix = args.nmix
   nepochs = args.epochs_mdn
- 
+
   data = colordata(\
     os.path.join(out_dir, 'images'), \
     listdir=listdir,\
     featslistdir=featslistdir,
     split='train')
-    
+
   nbatches = np.int_(np.floor(data.img_num/batchsize))
 
   data_loader = DataLoader(dataset=data, num_workers=args.nthreads,\
@@ -241,7 +245,7 @@ def train_mdn(logger=None):
 
   model_vae = VAE()
   model_vae.cuda()
-  model_vae.load_state_dict(torch.load('%s/models/model_vae.pth' % (out_dir)))
+  model_vae.load_state_dict(torch.load(os.path.join(out_dir, 'models/model_vae.pth')))
   model_vae.train(False)
 
   model_mdn = MDN()
@@ -274,26 +278,26 @@ def train_mdn(logger=None):
 
       train_loss = train_loss + loss.data[0]
 
-      if(logger): 
+      if(logger):
         logger.update_plot(itr_idx, [loss.data[0], loss_l2.data[0]], plot_type='mdn')
         itr_idx += 1
 
     train_loss = (train_loss*1.)/(nbatches)
     print('[DEBUG] Training MDN, epoch %d has loss %f' % (epochs_mdn, train_loss))
-    torch.save(model_mdn.state_dict(), '%s/models/model_mdn.pth' % (out_dir))
+    torch.save(model_mdn.state_dict(), os.path.join(out_dir, 'models/model_mdn.pth'))
 
 def divcolor():
   out_dir, listdir, featslistdir = get_dirpaths(args)
-  batchsize = args.batchsize 
-  hiddensize = args.hiddensize 
+  batchsize = args.batchsize
+  hiddensize = args.hiddensize
   nmix = args.nmix
- 
+
   data = colordata(\
     os.path.join(out_dir, 'images'), \
     listdir=listdir,\
     featslistdir=featslistdir,
     split='test')
-    
+
   nbatches = np.int_(np.floor(data.img_num/batchsize))
 
   data_loader = DataLoader(dataset=data, num_workers=args.nthreads,\
@@ -301,13 +305,13 @@ def divcolor():
 
   model_vae = VAE()
   model_vae.cuda()
-  model_vae.load_state_dict(torch.load('%s/models/model_vae.pth' % (out_dir)))
+  model_vae.load_state_dict(torch.load(os.path.join(out_dir,'models/model_vae.pth' )))
   model_vae.train(False)
 
   model_mdn = MDN()
   model_mdn.cuda()
-  model_mdn.load_state_dict(torch.load('%s/models/model_mdn.pth' % (out_dir)))
-  model_mdn.train(False) 
+  model_mdn.load_state_dict(torch.load(os.path.join(out_dir,'models/model_mdn.pth')))
+  model_mdn.train(False)
 
   for batch_idx, (batch, batch_recon_const, batch_weights, \
     batch_recon_const_outres, batch_feats) in \
@@ -328,11 +332,11 @@ def divcolor():
 
       input_color = Variable(torch.from_numpy(batch_j)).cuda()
       input_greylevel = Variable(torch.from_numpy(batch_recon_const_j)).cuda()
- 
+
       curr_mu = gmm_mu[j*nmix:(j+1)*nmix, :]
       orderid = np.argsort(\
         gmm_pi[j*nmix:(j+1)*nmix, 0].cpu().data.numpy().reshape(-1))
-  
+
       z = curr_mu.repeat(np.int((batchsize*1.)/nmix), 1)
 
       _, _, color_out = model_vae(input_color, input_greylevel, z, is_train=False)
@@ -341,14 +345,14 @@ def divcolor():
        batch_j[orderid, ...], \
        'divcolor_%05d_%05d' % (batch_idx, j), \
        nmix, \
-       net_recon_const=batch_recon_const_outres_j[orderid, ...]) 
+       net_recon_const=batch_recon_const_outres_j[orderid, ...])
 
 if __name__ == '__main__':
 
   os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
- 
+
   logger = None
-  if(args.visdom): 
+  if(args.visdom):
     outdir, _, _ = get_dirpaths(args)
     logger = Logger(args.server, args.port_num, outdir)
 
